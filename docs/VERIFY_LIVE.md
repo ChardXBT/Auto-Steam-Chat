@@ -172,10 +172,12 @@ What *was* verified offline is listed at the bottom.
 - [ ] **PAUSE.** `New-Item runtime\PAUSE`, send a DM: `RELAY_PAUSED`, the
   `dm` record is written, nothing posted. `Remove-Item runtime\PAUSE`: it is
   posted within a second or two.
-- [ ] **GitHub Actions CI passes.** The workflow was written on Windows and
-  never run. The bash "starts without secrets" step and the secret-scan
-  regexes were exercised locally only through PowerShell equivalents.
-  Check the Actions tab after the push; fix forward if a step fails.
+- [x] **GitHub Actions CI passes.** Verified after the push: run
+  [43346438911](https://github.com/ChardXBT/Auto-Steam-Chat/actions/runs/43346438911)
+  succeeded on `bee5fc7` (typecheck, build, tests, no-secrets start, secret
+  scan). GitHub warns that `actions/checkout@v4` and `actions/setup-node@v4`
+  target the deprecated Node 20 runtime; bump them when newer majors are
+  adopted fleet-wide.
 
 ---
 
