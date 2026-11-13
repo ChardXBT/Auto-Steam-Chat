@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Runtime data: refresh tokens, Steam data, relay state, DM record, logs
+runtime/
+
+# Configuration and secrets
+config.json
+.env
+.env.*
+!.env.example
+
+# Credentials that must never be committed by accident
+*.maFile
+refresh_token*
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs and coverage
+*.log
+coverage/
+*.tsbuildinfo

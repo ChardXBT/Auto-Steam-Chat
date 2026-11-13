@@ -1,0 +1,32 @@
+{
+  "accounts": {
+    "main": {
+      "enabled": true,
+      "label": "S | Skins",
+      "steam_id": "76561199798489148",
+      "logon_id": 1095975681
+    },
+    "rukia": {
+      "enabled": true,
+      "label": "Rukia | Skins",
+      "steam_id": "76561199825952724",
+      "logon_id": 1095975682
+    }
+  },
+  "persona_state": "online",
+  "backfill": {
+    "enabled": true,
+    "max_hours": 72
+  },
+  "discord": {
+    "enabled": true,
+    "username": "Auto-Steam-Chat",
+    "notify_startup": true,
+    "notify_shutdown": true
+  },
+  "telegram": {
+    "enabled": true
+  },
+  "display_time_zone": "America/Toronto",
+  "reconnect_backoff_ms": [5000, 15000, 30000, 60000, 300000, 600000]
+}

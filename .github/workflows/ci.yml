@@ -1,0 +1,73 @@
+name: ci
+
+# Offline only: no Steam, Discord or Telegram credentials and no network
+# calls to them. Live verification is operator-run (docs/VERIFY_LIVE.md).
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck (src and tests)
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Tests
+        run: npm test
+
+      - name: Starts without secrets and settles into INTERACTIVE_AUTH_REQUIRED
+        run: |
+          export AUTO_STEAM_CHAT_RUNTIME_DIR="$RUNNER_TEMP/asc-runtime"
+          export AUTO_STEAM_CHAT_ENV_PATH="$RUNNER_TEMP/no-such.env"
+          node dist/index.js start > "$RUNNER_TEMP/start.log" 2>&1 &
+          pid=$!
+          sleep 8
+          kill -0 "$pid"   # still running: no crash, no hang on stdin
+          touch "$AUTO_STEAM_CHAT_RUNTIME_DIR/STOP_REQUESTED"
+          wait "$pid"      # clean exit 0 on the stop file
+          cat "$RUNNER_TEMP/start.log"
+          grep -q 'INTERACTIVE_AUTH_REQUIRED account="main"' "$RUNNER_TEMP/start.log"
+          grep -q 'INTERACTIVE_AUTH_REQUIRED account="rukia"' "$RUNNER_TEMP/start.log"
+          grep -q 'SHUTDOWN reason="stop_file"' "$RUNNER_TEMP/start.log"
+
+      - name: Secret scan (no credentials or session material tracked)
+        run: |
+          fail=0
+          if git ls-files | grep -Ei '(^|/)(\.env|config\.json|refresh_token[^/]*|[^/]*\.mafile)$|^runtime/'; then
+            echo "::error::credential, config or runtime file is tracked"; fail=1
+          fi
+          if git grep -nIE 'discord(app)?\.com/api/(v[0-9]+/)?webhooks/[0-9]{15,}/[A-Za-z0-9_-]{30,}'; then
+            echo "::error::Discord webhook URL with a token in the repo"; fail=1
+          fi
+          if git grep -nIE '(^|[^0-9])[0-9]{8,12}:AA[A-Za-z0-9_-]{30,}'; then
+            echo "::error::Telegram bot token in the repo"; fail=1
+          fi
+          if git grep -nIE 'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'; then
+            echo "::error::JWT (Steam refresh/access token) in the repo"; fail=1
+          fi
+          if git grep -nIE 'steamLoginSecure[=:]["'"'"' ]*[0-9]{17}'; then
+            echo "::error::steamLoginSecure cookie value in the repo"; fail=1
+          fi
+          if git grep -nIE '"shared_secret"[[:space:]]*:[[:space:]]*"[A-Za-z0-9+/=]{27,}"'; then
+            echo "::error::maFile shared_secret in the repo"; fail=1
+          fi
+          exit $fail

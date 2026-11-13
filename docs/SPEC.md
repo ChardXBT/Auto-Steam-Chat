@@ -86,6 +86,7 @@ show a conversation in order.
 | `src/sinks/discord.ts` | Webhook embed + `<@id>` mention; ops notices |
 | `src/sinks/telegram.ts` | `sendMessage`, split to 4000 chars |
 | `src/sinks/jsonl.ts` | Durable local DM record (`runtime/messages.jsonl`) |
+| `src/ops-notify.ts` | Fire-and-forget STARTUP/SHUTDOWN/alert notices to Discord (+ Telegram for alerts), bounded flush at shutdown |
 | `src/reply.ts` | **Stub**: `SteamDmSender` interface, disabled implementation |
 
 ## Config
@@ -202,10 +203,13 @@ One webhook POST per chunk. `allowed_mentions` permits only the owner, so
 - **Escaping (my call):** Discord renders Markdown in embed descriptions,
   including masked links `[text](url)`. A scammer could send
   `[steamcommunity.com/tradeoffer/new](https://evil)` and it would render as a
-  trusted-looking link. So the characters `\ * _ ~ ` | > [ ] ( ) # < @ :` are
-  backslash-escaped. Rendered text equals the original; raw links stay
-  readable. Whether escaped `_`/`:` inside bare URLs still auto-link is VERIFY
-  LIVE (if not, links are still readable, just not clickable).
+  trusted-looking link. So the characters ``\ * _ ~ ` | > [ ] ( ) # <`` are
+  backslash-escaped everywhere, and `-`/`+` at the start of a line (list
+  markers). `:` and `@` are left alone so bare URLs stay clickable;
+  `allowed_mentions` already stops any ping from the text. Rendered text
+  equals the original. Whether an escaped `_` or `~` inside a bare URL still
+  auto-links is VERIFY LIVE (if not, the link is still readable, just not
+  clickable).
 - **Splitting:** the escaped body is split into chunks of ≤ 4000 chars
   (embed description limit is 4096; margin kept) on code-point boundaries,
   never inside an escape pair or a surrogate pair, preferring a newline or
@@ -266,22 +270,25 @@ header goes in the first message; continuation messages start with
   than a lost one.
 - Every write is atomic (tmp + `fsync` + rename with the EPERM/EBUSY/EACCES
   retry). A corrupt file is moved aside to `relayed.json.corrupt-<ts>`,
-  logged `DEDUPE_STATE_CORRUPT`, and replaced by an empty store **(my call)**;
-  the watermark is lost, so the next logon backfills `max_hours`, and old
-  messages in that window would be relayed again. Logged loudly.
+  logged `DEDUPE_STATE_CORRUPT`, and replaced by an empty store with no
+  `created_at` floor **(my call)**: the next logon backfills the full
+  `max_hours`, so messages in that window may be relayed again. A duplicate
+  is preferred to a miss. Logged loudly.
 - In-memory "in flight" set prevents the live event and the backfill from
   relaying the same message concurrently.
 - Eviction: markers whose message time is older than
   `max(backfill.max_hours, 24h) + 7 days` are dropped on load; backfill can
   never reach that far back, so they can never be needed.
 - **Watermark:** the newest `server_timestamp` seen on that account (live or
-  backfill). First run ever (no store): watermark = now, no backfill
-  **(my call)**, so the first start does not flood Discord with months of
-  history.
+  backfill). The store also records `created_at`, and the backfill never
+  reaches before it. So on the first run ever (no store) only the last 120 s
+  are backfilled **(my call)**, and the first start does not flood Discord
+  with months of history.
 
 ### Backfill (every successful logon)
 
-1. `since = max(watermark − 120 s, now − backfill.max_hours)`.
+1. `since = max(created_at, now − backfill.max_hours, watermark − 120 s)`
+   (`watermark` defaults to `created_at` before the first message).
 2. `chat.getActiveFriendMessageSessions({conversationsSince: since})`.
 3. For each session with `time_last_message ≥ since`:
    `chat.getFriendMessageHistory(friend, {startTime: since, maxCount: 100,
